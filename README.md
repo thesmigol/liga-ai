@@ -14,7 +14,7 @@ Projeto para ligar automaticamente um PC (ou simular) usando um ESP32 e um trans
 - Modo `SIMULATION_MODE` para testes sem hardware sensível.
 
 **Arquivos principais**
-- [startpc.ino](startpc.ino) — firmware principal (Wi‑Fi, servidor web, EEPROM, lógica de power).
+- [liga-ai.ino](liga-ai.ino) — firmware principal (Wi‑Fi, servidor web, EEPROM, lógica de power).
 - [html_templates.h](html_templates.h) — templates HTML usados pela interface web (página de configuração e painel principal).
 - [wifi_config.h.example](wifi_config.h.example) — exemplo de arquivo com as credenciais (copie para `wifi_config.h`).
 - [wifi_config.h](wifi_config.h) — arquivo local com suas credenciais (NÃO comitar). Está em `.gitignore`.
@@ -53,7 +53,7 @@ cp wifi_config.h.example wifi_config.h
 3. Mantenha `wifi_config.h` fora do repositório — ele já está listado em `.gitignore`.
 
 Compilar e gravar
-- Abra `startpc` no Arduino IDE (ou use `arduino-cli`) e selecione a placa ESP32 correta e a porta COM.
+- Abra `liga-ai` no Arduino IDE (ou use `arduino-cli`) e selecione a placa ESP32 correta e a porta COM.
 - Clique em `Upload`.
 
 Exemplo com `arduino-cli` (ajuste `--fqbn` e `-p` conforme sua placa/porta):
@@ -64,7 +64,7 @@ arduino-cli upload -p COM3 --fqbn esp32:esp32:esp32 .
 ```
 
 Como testar (modo simulação)
-- Deixe `SIMULATION_MODE` como `true` em `startpc.ino` para usar o LED no `GPIO23` em vez do 2N2222 e um estado de PC virtual.
+- Deixe `SIMULATION_MODE` como `true` em `liga-ai.ino` para usar o LED no `GPIO23` em vez do 2N2222 e um estado de PC virtual.
 - Ao ligar o ESP32, abra a rede Wi‑Fi `ESP32-Config` (se o dispositivo entrou em AP) e acesse `http://192.168.4.1/`.
 - Na interface web você pode salvar SSID/senha, ver status em tempo real (a UI faz polling em `/status`) e acionar o power manualmente.
 
@@ -77,7 +77,7 @@ Como funciona (resumo técnico)
 - Na inicialização o ESP32 tenta conectar nas redes em prioridade: `WIFI_SSID1`, `WIFI_SSID2`, depois em redes salvas na EEPROM.
 - Se falhar, cria um Access Point (`ESP32-Config`) com página para configurar novas credenciais.
 - Quando o Wi‑Fi volta após uma queda, o ESP32 espera um tempo de estabilização e então, se o PC estiver desligado, envia um pulso curto (`POWER_PULSE_MS`) ao `POWER_OUT_PIN` para acionar o botão via transistor.
-- As credenciais salvas via web são gravadas na EEPROM (endereços definidos em `startpc.ino`).
+- As credenciais salvas via web são gravadas na EEPROM (endereços definidos em `liga-ai.ino`).
 
 Endpoints HTTP importantes
 - `GET /` — página principal (ou página de configuração em modo AP).
