@@ -242,7 +242,6 @@ const char HTML_HOME_PAGE[] = R"(
   <main class='shell'>
     <section class='panel'>
       <h1>Painel do ESP32</h1>
-      <p class='muted'>Monitoramento do estado do PC e acionamento via 2N2222.</p>
       <div class='simbox'>
         Modo de teste: o GPIO23 acende um LED com resistor de 1K e o estado do PC pode ser simulado sem abrir o computador.
       </div>

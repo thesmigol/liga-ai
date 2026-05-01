@@ -85,3 +85,52 @@ Endpoints HTTP importantes
 - `GET /status` — retorna JSON com estado atual.
 - `POST /power/toggle` — aciona o pulso de power.
 - `POST /pc/simulate` — alterna o estado de PC em `SIMULATION_MODE`.
+
+Personalização e próximos passos recomendados
+- Ajustar `AUTO_POWER_DELAY_MS` e `WIFI_STABLE_BEFORE_POWER_MS` conforme comportamento do seu ambiente.
+- Adicionar autenticação na interface web se expor à rede.
+- Implementar logs remotos (MQTT) para monitoramento em larga escala.
+
+OTA (Over-The-Air) Updates — Atualizar firmware via Wi‑Fi
+O projeto inclui suporte a atualização remota de firmware via Wi‑Fi, eliminando a necessidade de desconectar o cabo USB a cada mudança.
+
+Configuração OTA
+- Arquivo: [ota_config.h](ota_config.h)
+  - `OTA_ENABLED` — ativar/desativar OTA (padrão: `true`).
+  - `OTA_PASSWORD` — senha para proteger uploads (padrão: `12345678`).
+  - `OTA_HOSTNAME` — nome do dispositivo na rede para OTA (padrão: `esp32-auto-pc`).
+  - `OTA_PORT` — porta padrão 3232 (Arduino).
+  - `OTA_DEBUG` — logs detalhados de progresso (padrão: `true`).
+
+Como usar OTA (Arduino IDE)
+1. Após o primeiro upload via USB e Wi‑Fi configurado, o ESP32 aparecerá em `Ferramentas > Porta`.
+2. Vá em `Ferramentas > Porta` e selecione `esp32-auto-pc at 192.168.x.x` (deve aparecer automaticamente).
+3. Quando solicitado, insira a senha OTA (padrão: `12345678`).
+4. Clique em `Upload` normalmente — o firmware será transferido via Wi‑Fi.
+
+Como usar OTA (arduino-cli)
+```bash
+# Compilar
+arduino-cli compile --fqbn esp32:esp32:esp32 .
+
+# Upload OTA (descubra o IP na rede ou use .local)
+arduino-cli upload -p esp32-auto-pc.local:3232 \
+  --fqbn esp32:esp32:esp32 \
+  --password 12345678
+```
+
+Dicas e troubleshooting OTA
+- Se não encontrar o dispositivo, verifique se está na mesma rede Wi‑Fi e se `OTA_ENABLED` é `true`.
+- Se receber erro de autenticação, verifique a senha em `ota_config.h`.
+- Durante OTA, o dispositivo reinicia automaticamente ao final — aguarde ~5 segundos.
+- Se o upload falhar a meio caminho, o ESP32 fará rollback automático para o firmware anterior.
+- Para logs detalhados no Serial, ative `OTA_DEBUG = true` em `ota_config.h`.
+- Após mudanças em `ota_config.h`, faça um upload **via USB** para que as novas configurações OTA entrem em vigor.
+
+Créditos e histórico
+- Projeto desenvolvido para uso pessoal e testes com ESP32 e controle de power de PC. Mantido no diretório do sketch `startpc`.
+
+Se quiser, eu posso:
+- Adicionar um `README` em formato mais curto para a root do repositório.
+- Gerar um diagrama PNG a partir do `pinout_esp32_pc_power.puml`.
+- Criar um script de upload com `arduino-cli` adaptado para sua placa/porta.
