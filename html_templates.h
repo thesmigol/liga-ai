@@ -254,14 +254,18 @@ const char HTML_HOME_PAGE[] = R"(
         <div class='metric'><div class='k'>IP do ESP32</div><div class='v' id='wifiIp'>-</div></div>
         <div class='metric'><div class='k'>Estado do PC</div><div class='v' id='pcState'>-</div></div>
         <div class='metric'><div class='k'>Auto power</div><div class='v' id='autoPower'>-</div></div>
+        <div class='metric'><div class='k'>PC-side URL</div><div class='v' id='pcHttpBase'>-</div></div>
+        <div class='metric'><div class='k'>PC-side HTTP</div><div class='v' id='pcHttpState'>-</div></div>
       </div>
 
       <div id='pcBadge' class='badge warn'>Aguardando status...</div>
+      <div id='pcHttpBadge' class='badge warn'>PC-side: aguardando...</div>
       <div>
         <button id='btnPower' type='button'>Acionar botao Power do PC</button>
         <button id='btnToggleSim' type='button' style='margin-left: 8px; background: linear-gradient(135deg, #2d9cdb, #27ae60);'>Alternar PC simulado</button>
       </div>
       <div class='log' id='log'></div>
+      <div class='log' id='pcHttpLog'></div>
     </section>
 
     <section class='panel'>
@@ -346,8 +350,12 @@ const char HTML_HOME_PAGE[] = R"(
     const wifiIp = document.getElementById('wifiIp');
     const pcState = document.getElementById('pcState');
     const autoPower = document.getElementById('autoPower');
+    const pcHttpBase = document.getElementById('pcHttpBase');
+    const pcHttpState = document.getElementById('pcHttpState');
     const pcBadge = document.getElementById('pcBadge');
+    const pcHttpBadge = document.getElementById('pcHttpBadge');
     const log = document.getElementById('log');
+    const pcHttpLog = document.getElementById('pcHttpLog');
     const statusBanner = document.getElementById('statusBanner');
     const statusSub = document.getElementById('statusSub');
     const btnPower = document.getElementById('btnPower');
@@ -364,6 +372,24 @@ const char HTML_HOME_PAGE[] = R"(
       }
     }
 
+    function setPcHttpBadge(isOnline, isMonitoring) {
+      pcHttpBadge.classList.remove('ok', 'off', 'warn');
+      if (isOnline) {
+        pcHttpBadge.classList.add('ok');
+        pcHttpBadge.textContent = 'PC-side: online';
+        return;
+      }
+
+      if (isMonitoring) {
+        pcHttpBadge.classList.add('warn');
+        pcHttpBadge.textContent = 'PC-side: monitorando boot';
+        return;
+      }
+
+      pcHttpBadge.classList.add('off');
+      pcHttpBadge.textContent = 'PC-side: offline';
+    }
+
     async function updateStatus() {
       try {
         const r = await fetch('/status');
@@ -372,14 +398,28 @@ const char HTML_HOME_PAGE[] = R"(
         wifiIp.textContent = s.ip || '-';
         pcState.textContent = s.pc_on ? 'Ligado' : 'Desligado';
         autoPower.textContent = s.auto_power_enabled ? 'Ativo' : 'Inativo';
+        pcHttpBase.textContent = s.pc_http_base_url || '-';
+
+        if (s.pc_http_online) {
+          pcHttpState.textContent = 'Online';
+        } else if (s.pc_http_monitoring) {
+          pcHttpState.textContent = 'Monitorando';
+        } else {
+          pcHttpState.textContent = 'Offline';
+        }
+
         statusBanner.childNodes[0].nodeValue = s.status_operacional || 'Sem status';
-        statusSub.textContent = s.modo_ap ? 'Hotspot ativo e em busca do Wi-Fi salvo.' : 'Conectado na rede. A Home acompanha o estado do PC.';
+        statusSub.textContent = s.modo_ap ? 'Hotspot ativo e em busca do Wi-Fi salvo.' : 'Conectado na rede. A Home acompanha o estado do PC e do servico HTTP no PC.';
         if (s.simulation_mode) {
           log.textContent = s.pc_on ? 'Simulacao ativa: PC virtual ligado.' : 'Simulacao ativa: PC virtual desligado.';
         }
+
+        pcHttpLog.textContent = s.pc_http_last_result ? ('HTTP PC-side: ' + s.pc_http_last_result) : 'HTTP PC-side: sem historico';
         setBadge(s.pc_on ? 'ON' : 'OFF');
+        setPcHttpBadge(Boolean(s.pc_http_online), Boolean(s.pc_http_monitoring));
       } catch (e) {
         log.textContent = 'Falha ao atualizar status.';
+        pcHttpLog.textContent = 'Falha ao atualizar status HTTP do PC-side.';
       }
     }
 

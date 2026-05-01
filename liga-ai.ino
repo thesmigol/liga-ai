@@ -2,10 +2,18 @@
 #include <WebServer.h>
 #include <EEPROM.h>
 #include <ArduinoOTA.h>
+#include <HTTPClient.h>
 #include "html_templates.h"
 // Inclua seu arquivo local de credenciais (NAO comitar). Copie de wifi_config.h.example
 #include "wifi_config.h"
 #include "ota_config.h"
+
+// Compatibilidade: se a configuracao nova ainda nao existir em wifi_config.h,
+// mantemos o build funcional com valor vazio.
+#ifndef PC_HTTP_BASE_URL
+#define PC_HTTP_BASE_URL ""
+
+#endif
 
 // ===== Hardware (ESP32 + 1K + 2N2222 ou simulacao com LED) =====
 #define LED_PIN 2
@@ -33,6 +41,7 @@ const char* PASS2 = WIFI_PASS2;
 // ===== AP fallback =====
 const char* AP_SSID = WIFI_SSID3;
 const char* AP_PASS = WIFI_PASS3;
+const char* PC_SERVICE_BASE_URL = PC_HTTP_BASE_URL;
 
 // ===== Auto power-on apos retorno de energia =====
 const bool AUTO_POWER_ON_AFTER_BOOT = true;
@@ -40,6 +49,8 @@ const unsigned long AUTO_POWER_DELAY_MS = 15000;
 const unsigned long POWER_PULSE_MS = 450;
 const unsigned long AP_RECONNECT_INTERVAL_MS = 60000;
 const unsigned long WIFI_STABLE_BEFORE_POWER_MS = 3000;
+const unsigned long PC_HTTP_POLL_INTERVAL_MS = 5000;
+const unsigned long PC_HTTP_MONITOR_TIMEOUT_MS = 240000;
 
 WebServer server(80);
 
@@ -50,6 +61,11 @@ unsigned long boot_ms = 0;
 unsigned long ultimo_reconnect_ms = 0;
 bool pc_ligado_simulado = false;
 String status_operacional = "Iniciando";
+bool pc_http_online = false;
+bool pc_http_monitoring = false;
+unsigned long pc_http_monitor_started_ms = 0;
+unsigned long pc_http_last_poll_ms = 0;
+String pc_http_last_result = "nao iniciado";
 
 String ssid_ativo = "-";
 String ip_ativo = "-";
@@ -64,6 +80,11 @@ void acionarBotaoPower();
 void verificarAutoPower();
 void tentarReconectarNoWiFi();
 void tentarLigarPcSeNecessario(const char* motivo);
+bool pcServiceConfigurado();
+String montarPcServiceUrl(const char* path);
+bool enviarEventoPc(const char* eventType, const char* motivo);
+bool consultarStatusPcService();
+void monitorarStatusPcService();
 void piscarLedStatus();
 void inicializarOTA();
 
@@ -96,6 +117,10 @@ void setup() {
   conectado = conectarWiFi();
 
   if (conectado) {
+    if (pcServiceConfigurado()) {
+      Serial.printf("Servico PC-side configurado em: %s\n", PC_SERVICE_BASE_URL);
+      enviarEventoPc("wifi_connected", "boot_wifi_connected");
+    }
     Serial.println("Wi-Fi conectado na inicializacao; tentando ligar PC se necessario.");
     tentarLigarPcSeNecessario("boot_wifi");
   }
@@ -132,10 +157,13 @@ void loop() {
 
   if (!modo_ap && WiFi.status() != WL_CONNECTED) {
     conectado = false;
+    pc_http_online = false;
+    pc_http_monitoring = false;
     Serial.println("Wi-Fi caiu. Voltando para AP de configuracao.");
     criarAccessPoint();
   }
 
+  monitorarStatusPcService();
   verificarAutoPower();
   piscarLedStatus();
 }
@@ -310,6 +338,9 @@ void tentarReconectarNoWiFi() {
 void tentarLigarPcSeNecessario(const char* motivo) {
   if (pcLigado()) {
     Serial.printf("PC ja estava ligado apos %s. Nenhum pulso enviado.\n", motivo);
+    if (pcServiceConfigurado()) {
+      enviarEventoPc("power_skipped_pc_already_on", motivo);
+    }
     return;
   }
 
@@ -319,8 +350,178 @@ void tentarLigarPcSeNecessario(const char* motivo) {
   if (!pcLigado()) {
     Serial.printf("Acionando power do PC apos %s.\n", motivo);
     acionarBotaoPower();
+    if (pcServiceConfigurado()) {
+      enviarEventoPc("power_pulse_sent", motivo);
+      pc_http_monitoring = true;
+      pc_http_online = false;
+      pc_http_monitor_started_ms = millis();
+      pc_http_last_poll_ms = 0;
+      pc_http_last_result = "aguardando /status do PC-side";
+      status_operacional = "Pulso enviado; monitorando /status do PC";
+    }
   } else {
     Serial.printf("PC ligou sozinho antes do pulso apos %s.\n", motivo);
+    if (pcServiceConfigurado()) {
+      enviarEventoPc("pc_ligou_sem_pulso", motivo);
+    }
+  }
+}
+
+bool pcServiceConfigurado() {
+  return strlen(PC_SERVICE_BASE_URL) > 0;
+}
+
+String montarPcServiceUrl(const char* path) {
+  String base = String(PC_SERVICE_BASE_URL);
+  base.trim();
+
+  if (base.length() == 0) {
+    return "";
+  }
+
+  String p = String(path);
+  if (!p.startsWith("/")) {
+    p = "/" + p;
+  }
+
+  if (base.endsWith("/")) {
+    base.remove(base.length() - 1);
+  }
+
+  return base + p;
+}
+
+bool enviarEventoPc(const char* eventType, const char* motivo) {
+  if (!conectado || modo_ap || !pcServiceConfigurado()) {
+    return false;
+  }
+
+  String url = montarPcServiceUrl("/event");
+  if (url.length() == 0) {
+    return false;
+  }
+
+  String motivoSafe = String(motivo);
+  motivoSafe.replace("\"", "'");
+
+  String ssidSafe = ssid_ativo;
+  ssidSafe.replace("\"", "'");
+
+  String ipSafe = ip_ativo;
+  ipSafe.replace("\"", "'");
+
+  String payload = "{";
+  payload += "\"source\":\"esp32-auto-pc\",";
+  payload += "\"event_type\":\"" + String(eventType) + "\",";
+  payload += "\"data\":{";
+  payload += "\"motivo\":\"" + motivoSafe + "\",";
+  payload += "\"ssid\":\"" + ssidSafe + "\",";
+  payload += "\"ip\":\"" + ipSafe + "\",";
+  payload += "\"simulation_mode\":" + String(SIMULATION_MODE ? "true" : "false");
+  payload += "}";
+  payload += "}";
+
+  HTTPClient http;
+  http.setConnectTimeout(1500);
+  http.setTimeout(2500);
+
+  if (!http.begin(url)) {
+    pc_http_last_result = "falha ao iniciar POST /event";
+    return false;
+  }
+
+  http.addHeader("Content-Type", "application/json");
+  int httpCode = http.POST(payload);
+
+  if (httpCode > 0) {
+    if (httpCode == 200) {
+      pc_http_last_result = "POST /event OK";
+      http.end();
+      return true;
+    }
+
+    pc_http_last_result = "POST /event HTTP " + String(httpCode);
+    http.end();
+    return false;
+  }
+
+  pc_http_last_result = "POST /event erro: " + HTTPClient::errorToString(httpCode);
+  http.end();
+  return false;
+}
+
+bool consultarStatusPcService() {
+  if (!conectado || modo_ap || !pcServiceConfigurado()) {
+    return false;
+  }
+
+  String url = montarPcServiceUrl("/status");
+  if (url.length() == 0) {
+    return false;
+  }
+
+  HTTPClient http;
+  http.setConnectTimeout(1500);
+  http.setTimeout(2500);
+
+  if (!http.begin(url)) {
+    pc_http_last_result = "falha ao iniciar GET /status";
+    return false;
+  }
+
+  int httpCode = http.GET();
+  if (httpCode > 0) {
+    if (httpCode == 200) {
+      pc_http_last_result = "GET /status OK";
+      http.end();
+      return true;
+    }
+
+    pc_http_last_result = "GET /status HTTP " + String(httpCode);
+    http.end();
+    return false;
+  }
+
+  pc_http_last_result = "GET /status erro: " + HTTPClient::errorToString(httpCode);
+  http.end();
+  return false;
+}
+
+void monitorarStatusPcService() {
+  if (!pc_http_monitoring) {
+    return;
+  }
+
+  if (!conectado || modo_ap) {
+    pc_http_monitoring = false;
+    pc_http_online = false;
+    pc_http_last_result = "monitor interrompido (sem Wi-Fi)";
+    return;
+  }
+
+  unsigned long elapsed = millis() - pc_http_monitor_started_ms;
+  if (elapsed > PC_HTTP_MONITOR_TIMEOUT_MS) {
+    pc_http_monitoring = false;
+    pc_http_online = false;
+    pc_http_last_result = "timeout aguardando /status";
+    status_operacional = "Timeout no monitoramento HTTP do PC";
+    return;
+  }
+
+  if (millis() - pc_http_last_poll_ms < PC_HTTP_POLL_INTERVAL_MS) {
+    return;
+  }
+
+  pc_http_last_poll_ms = millis();
+
+  if (consultarStatusPcService()) {
+    pc_http_online = true;
+    pc_http_monitoring = false;
+    status_operacional = "PC-side online confirmado via HTTP";
+    Serial.println("PC-side respondeu /status com sucesso.");
+    enviarEventoPc("pc_online_confirmed", "http_status_ok");
+  } else {
+    status_operacional = "Aguardando /status do PC-side";
   }
 }
 
@@ -371,6 +572,10 @@ void handleStatus() {
   json += "\"auto_power_executado\":" + String(auto_power_executado ? "true" : "false") + ",";
   json += "\"modo_ap\":" + String(modo_ap ? "true" : "false") + ",";
   json += "\"simulation_mode\":" + String(SIMULATION_MODE ? "true" : "false") + ",";
+  json += "\"pc_http_base_url\":\"" + String(PC_SERVICE_BASE_URL) + "\",";
+  json += "\"pc_http_online\":" + String(pc_http_online ? "true" : "false") + ",";
+  json += "\"pc_http_monitoring\":" + String(pc_http_monitoring ? "true" : "false") + ",";
+  json += "\"pc_http_last_result\":\"" + pc_http_last_result + "\",";
   json += "\"status_operacional\":\"" + status_operacional + "\"";
   json += "}";
 

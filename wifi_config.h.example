@@ -21,4 +21,12 @@
 #define WIFI_SSID3 "ESP32-AP"
 #define WIFI_PASS3 "1234567890"
 
+// URL base do servico HTTP rodando no PC (pc-side).
+// Exemplos:
+// - "http://192.168.0.50:8000"
+// - "http://meu-pc.local:8000"
+// Deixe vazio se ainda nao for usar a integracao.
+#define PC_HTTP_BASE_URL ""
+
+
 #endif // WIFI_CONFIG_H
