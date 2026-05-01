@@ -1,0 +1,24 @@
+// Copie este arquivo para 'wifi_config.h' e preencha suas credenciais reais.
+// Este arquivo de exemplo pode ser comitado no repositório público.
+
+#ifndef WIFI_CONFIG_H
+#define WIFI_CONFIG_H
+
+// Defina SIMULATION como true para ativar o modo de simulacao
+//onde o GPIO23 acende um LED e o estado do PC é virtual (ligado/desligado).
+// Isso permite testar a funcionalidade sem precisar do hardware real ou abrir o PC.
+#define SIMULATION true
+
+// Rede e senha primária (prioridade 1)
+#define WIFI_SSID1 "SUA_REDE_PRINCIPAL"
+#define WIFI_PASS1 "SUA_SENHA_PRINCIPAL"
+
+// Rede e senha secundária (prioridade 2)
+#define WIFI_SSID2 "SUA_REDE_SECUNDARIA"
+#define WIFI_PASS2 "SUA_SENHA_SECUNDARIA"
+
+// Rede e senha AP (prioridade 3)
+#define WIFI_SSID3 "ESP32-AP"
+#define WIFI_PASS3 "1234567890"
+
+#endif // WIFI_CONFIG_H
