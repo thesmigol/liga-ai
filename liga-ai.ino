@@ -95,6 +95,11 @@ void setup() {
 
   conectado = conectarWiFi();
 
+  if (conectado) {
+    Serial.println("Wi-Fi conectado na inicializacao; tentando ligar PC se necessario.");
+    tentarLigarPcSeNecessario("boot_wifi");
+  }
+
   if (!conectado) {
     Serial.println("Falha ao conectar nas redes. Entrando em modo AP.");
     criarAccessPoint();
