@@ -417,6 +417,19 @@ const char HTML_HOME_PAGE[] = R"(
         pcHttpLog.textContent = s.pc_http_last_result ? ('HTTP PC-side: ' + s.pc_http_last_result) : 'HTTP PC-side: sem historico';
         setBadge(s.pc_on ? 'ON' : 'OFF');
         setPcHttpBadge(Boolean(s.pc_http_online), Boolean(s.pc_http_monitoring));
+
+        // Desabilita o botão Power se PC estiver ligado
+        if (s.pc_on) {
+          btnPower.disabled = true;
+          btnPower.style.opacity = '0.5';
+          btnPower.style.cursor = 'not-allowed';
+          btnPower.title = 'PC já está ligado';
+        } else {
+          btnPower.disabled = false;
+          btnPower.style.opacity = '1';
+          btnPower.style.cursor = 'pointer';
+          btnPower.title = '';
+        }
       } catch (e) {
         log.textContent = 'Falha ao atualizar status.';
         pcHttpLog.textContent = 'Falha ao atualizar status HTTP do PC-side.';
@@ -424,6 +437,20 @@ const char HTML_HOME_PAGE[] = R"(
     }
 
     btnPower.addEventListener('click', async () => {
+      // Verifica se PC está ligado ANTES de tentar enviar POST
+      try {
+        const r = await fetch('/status');
+        const s = await r.json();
+        
+        if (s.pc_on) {
+          log.textContent = '⚠️ PC já está ligado. Nenhum pulso foi enviado.';
+          return;
+        }
+      } catch (e) {
+        log.textContent = 'Falha ao verificar status do PC.';
+        return;
+      }
+
       btnPower.disabled = true;
       log.textContent = 'Acionando pulso de power...';
       try {

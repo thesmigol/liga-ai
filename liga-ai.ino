@@ -18,7 +18,6 @@
 // ===== Hardware (ESP32 + 1K + 2N2222 ou simulacao com LED) =====
 #define LED_PIN 2
 #define POWER_OUT_PIN 23
-#define PC_STATUS_PIN 34
 
 // Quando true, o projeto roda sem o 2N2222 e sem o PC real.
 // GPIO23 acende um LED com resistor de 1K e o estado do PC vira virtual.
@@ -45,12 +44,12 @@ const char* PC_SERVICE_BASE_URL = PC_HTTP_BASE_URL;
 
 // ===== Auto power-on apos retorno de energia =====
 const bool AUTO_POWER_ON_AFTER_BOOT = true;
-const unsigned long AUTO_POWER_DELAY_MS = 15000;
+const unsigned long AUTO_POWER_DELAY_MS = 30000;
 const unsigned long POWER_PULSE_MS = 450;
 const unsigned long AP_RECONNECT_INTERVAL_MS = 60000;
-const unsigned long WIFI_STABLE_BEFORE_POWER_MS = 3000;
-const unsigned long PC_HTTP_POLL_INTERVAL_MS = 5000;
-const unsigned long PC_HTTP_MONITOR_TIMEOUT_MS = 240000;
+const unsigned long WIFI_STABLE_BEFORE_POWER_MS = 5000;
+const unsigned long PC_HTTP_POLL_INTERVAL_MS = 10000;
+const unsigned long PC_HTTP_MONITOR_TIMEOUT_MS = 360000;
 
 WebServer server(80);
 
@@ -103,9 +102,6 @@ void setup() {
 
   pinMode(POWER_OUT_PIN, OUTPUT);
   digitalWrite(POWER_OUT_PIN, LOW);
-
-  // GPIO34 e somente entrada e nao tem pull-up interno.
-  pinMode(PC_STATUS_PIN, INPUT);
 
   EEPROM.begin(EEPROM_SIZE);
 
@@ -261,11 +257,14 @@ void criarAccessPoint() {
 }
 
 bool pcLigado() {
+  // Modo simulacao
   if (SIMULATION_MODE) {
     return pc_ligado_simulado;
   }
 
-  return digitalRead(PC_STATUS_PIN) == HIGH;
+  // Monitora apenas via HTTP (sem GPIO 34)
+  // O status real do PC vem do polling /status do PC-side
+  return pc_http_online;
 }
 
 void acionarBotaoPower() {
